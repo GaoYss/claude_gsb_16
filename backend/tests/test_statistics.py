@@ -84,3 +84,43 @@ def test_dashboard_returns_all_sections(api, seeded):
     assert len(data["trends"]) == 6
     assert data["recent_activity"]["records"]
     assert data["recent_activity"]["replacements"]
+
+
+def test_dashboard_accepts_green_space_scope(api, make_space, make_task, make_record, make_replacement):
+    """看板携带绿地台账组合条件时，各板块只统计范围内的绿地。"""
+
+    target = make_space(name="目标绿地", district="滨江区", green_type="road", area_sqm=800)
+    other = make_space(name="范围外绿地", district="西湖区", green_type="park", area_sqm=9000)
+    make_task(space=target, plan_date=date.today() - timedelta(days=2), status="pending")
+    make_record(space=target, record_date=date.today() - timedelta(days=1))
+    make_replacement(space=target, quantity=12, unit_price=10,
+                     replace_date=date.today() - timedelta(days=1))
+    make_task(space=other, plan_date=date.today() - timedelta(days=2), status="pending")
+    make_record(space=other, record_date=date.today() - timedelta(days=1))
+
+    data = api.data(api.get(
+        "/api/v1/statistics/dashboard",
+        district="滨江区", green_type="road", area_min=500, area_max=1000,
+    ))
+
+    assert data["overview"]["green_space"]["total"] == 1
+    assert data["overview"]["green_space"]["total_area"] == 800.0
+    assert data["overview"]["task"]["total"] == 1
+    assert data["overview"]["task"]["overdue_count"] == 1
+    assert data["overview"]["record"]["total"] == 1
+    assert data["overview"]["replacement"]["total"] == 1
+    assert {item["value"] for item in data["distributions"]["green_space_by_type"]} == {"road"}
+    assert data["ranking"][0]["name"] == "目标绿地"
+    assert len(data["overdue_tasks"]) == 1
+    assert data["overdue_tasks"][0]["green_space_id"] == target.id
+    assert len(data["recent_activity"]["records"]) == 1
+    assert data["recent_activity"]["records"][0]["green_space_id"] == target.id
+    assert len(data["recent_activity"]["replacements"]) == 1
+    assert sum(item["record_count"] for item in data["trends"]) == 1
+
+    # 不存在的范围：看板各板块为空但结构不变
+    empty = api.data(api.get("/api/v1/statistics/dashboard", district="不存在的区"))
+    assert empty["overview"]["green_space"]["total"] == 0
+    assert empty["overview"]["task"]["total"] == 0
+    assert empty["distributions"]["green_space_by_type"] == []
+    assert empty["overdue_tasks"] == []

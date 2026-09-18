@@ -13,7 +13,7 @@ bp = Blueprint("green_spaces", __name__)
 
 @bp.get("/green-spaces")
 def list_green_spaces():
-    """台账列表：支持关键字、类型、等级、状态、行政区过滤 + 排序 + 分页。"""
+    """台账列表：支持关键字、行政区、类型、等级、状态、面积区间组合过滤 + 排序 + 分页。"""
 
     filters = green_space_filters(request.args)
     page, page_size = parse_page_args()

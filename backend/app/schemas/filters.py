@@ -19,6 +19,17 @@ def _int(args, key):
         return None
 
 
+def _number(args, key):
+    value = (args.get(key) or "").strip()
+    if not value:
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    return number if number >= 0 else None
+
+
 def _enum(args, key, group_key):
     value = (args.get(key) or "").strip()
     return value if value and ENUM_GROUPS[group_key].has(value) else None
@@ -52,6 +63,12 @@ def green_space_filters(args):
     keyword = _text(args, "keyword")
     if keyword:
         filters["keyword"] = keyword
+    area_min = _number(args, "area_min")
+    if area_min is not None:
+        filters["area_min"] = area_min
+    area_max = _number(args, "area_max")
+    if area_max is not None:
+        filters["area_max"] = area_max
     return filters
 
 

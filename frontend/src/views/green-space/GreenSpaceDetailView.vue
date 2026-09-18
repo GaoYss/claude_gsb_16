@@ -5,10 +5,14 @@
         <EnumTag v-if="space.status" group="green_space_status" :value="space.status" :label="space.status_label" />
       </template>
       <template #actions>
-        <el-button :icon="'Back'" @click="router.push('/green-spaces')">返回台账</el-button>
+        <el-button :icon="'Back'" @click="backToList">返回台账</el-button>
         <el-button type="primary" :icon="'Edit'" @click="formDialog.open(space)">编辑台账</el-button>
       </template>
     </PageHeader>
+
+    <ScopeFilterBar :tags="scopeTags" title="来自台账的筛选条件">
+      <el-button link type="primary" :icon="'Back'" @click="backToList">返回台账（保留条件与页码）</el-button>
+    </ScopeFilterBar>
 
     <div class="panel">
       <el-descriptions :column="3" border>
@@ -141,8 +145,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { greenSpaceApi } from '@/api'
 import EnumTag from '@/components/common/EnumTag.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import ScopeFilterBar from '@/components/common/ScopeFilterBar.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import { formatArea, formatCurrency, formatDate, formatHours, formatNumber } from '@/utils/format'
+import { describeGreenSpaceFilters } from '@/utils/greenSpaceScope'
 
 import GreenSpaceFormDialog from './GreenSpaceFormDialog.vue'
 
@@ -162,6 +168,13 @@ const replacementSummary = ref([])
 const taskTotal = computed(() =>
   Object.values(statistics.value.task_status || {}).reduce((sum, value) => sum + value, 0),
 )
+
+// 从台账列表带进来的组合条件，用于回显与原路返回
+const scopeTags = computed(() => describeGreenSpaceFilters(route.query))
+
+function backToList() {
+  router.push({ name: 'green-space-list', query: { ...route.query } })
+}
 
 async function load() {
   loading.value = true

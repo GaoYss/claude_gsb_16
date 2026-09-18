@@ -6,6 +6,10 @@
       </template>
     </PageHeader>
 
+    <ScopeFilterBar :tags="scopeTags" title="台账筛选条件（看板同口径统计）">
+      <el-button link type="primary" :icon="'Back'" @click="backToList">返回台账（保留条件与页码）</el-button>
+    </ScopeFilterBar>
+
     <div class="stat-grid">
       <StatCard
         label="在册绿地"
@@ -155,17 +159,20 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { statisticsApi } from '@/api'
 import ChartPanel from '@/components/common/ChartPanel.vue'
 import EnumTag from '@/components/common/EnumTag.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import ScopeFilterBar from '@/components/common/ScopeFilterBar.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import { formatArea, formatCurrency, formatHours, formatNumber, formatPercent, today } from '@/utils/format'
+import { describeGreenSpaceFilters, pickGreenSpaceFilters } from '@/utils/greenSpaceScope'
 
 import { barOption, pieOption, trendOption } from './chartOptions'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const dashboard = ref(emptyDashboard())
@@ -193,6 +200,14 @@ function emptyDashboard() {
 }
 
 const overview = computed(() => dashboard.value.overview)
+
+// 从台账列表带入的组合检索条件，看板各板块按同一范围统计
+const scopeParams = computed(() => pickGreenSpaceFilters(route.query))
+const scopeTags = computed(() => describeGreenSpaceFilters(route.query))
+
+function backToList() {
+  router.push({ name: 'green-space-list', query: { ...route.query } })
+}
 
 const trendChart = computed(() => trendOption(dashboard.value.trends || []))
 
@@ -235,7 +250,7 @@ function overdueDays(planDate) {
 async function load() {
   loading.value = true
   try {
-    dashboard.value = await statisticsApi.dashboard({ months: 6 })
+    dashboard.value = await statisticsApi.dashboard({ months: 6, ...scopeParams.value })
   } finally {
     loading.value = false
   }

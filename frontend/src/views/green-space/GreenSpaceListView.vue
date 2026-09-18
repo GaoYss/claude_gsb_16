@@ -2,6 +2,7 @@
   <div class="page">
     <PageHeader title="绿地台账" description="城市绿地基础档案，养护任务与记录均以此台账为归属">
       <template #actions>
+        <el-button :icon="'DataLine'" @click="goDashboard">查看看板</el-button>
         <el-button type="primary" :icon="'Plus'" @click="formDialog.open()">新增绿地</el-button>
       </template>
     </PageHeader>
@@ -28,6 +29,25 @@
         <el-select v-model="filters.status" placeholder="养护状态" clearable @change="search">
           <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
+        <el-input-number
+          v-model="filters.area_min"
+          :min="0"
+          :controls="false"
+          placeholder="面积下限(㎡)"
+          class="area-input"
+          @keyup.enter="search"
+          @change="onAreaChange"
+        />
+        <span class="area-separator">~</span>
+        <el-input-number
+          v-model="filters.area_max"
+          :min="0"
+          :controls="false"
+          placeholder="面积上限(㎡)"
+          class="area-input"
+          @keyup.enter="search"
+          @change="onAreaChange"
+        />
         <el-button type="primary" :icon="'Search'" @click="search">查询</el-button>
         <el-button :icon="'RefreshLeft'" @click="resetFilters">重置</el-button>
       </div>
@@ -108,7 +128,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { greenSpaceApi } from '@/api'
@@ -117,9 +137,11 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import { useEnumOptions } from '@/composables/useEnumOptions'
 import { useListQuery } from '@/composables/useListQuery'
 import { formatArea, formatDate } from '@/utils/format'
+import { pickGreenSpaceFilters } from '@/utils/greenSpaceScope'
 
 import GreenSpaceFormDialog from './GreenSpaceFormDialog.vue'
 
+const route = useRoute()
 const router = useRouter()
 const formDialog = ref(null)
 const districts = ref([])
@@ -130,16 +152,46 @@ const { options: statusOptions } = useEnumOptions('green_space_status')
 
 const { filters, meta, items, summary, loading, load, search, resetFilters, handlePageChange, handleSizeChange } =
   useListQuery(greenSpaceApi.list, {
-    initialFilters: { keyword: '', district: '', green_type: '', maintenance_grade: '', status: '' },
+    routeSync: true,
+    initialFilters: {
+      keyword: '',
+      district: '',
+      green_type: '',
+      maintenance_grade: '',
+      status: '',
+      area_min: null,
+      area_max: null,
+    },
   })
+
+// el-input-number 清空时给出 undefined，统一转回 null
+function onAreaChange() {
+  if (filters.area_min === undefined) filters.area_min = null
+  if (filters.area_max === undefined) filters.area_max = null
+  search()
+}
 
 async function loadDistricts() {
   const data = await greenSpaceApi.districts()
   districts.value = data?.items || []
 }
 
+/** 当前组合条件 + 翻页位置，进入档案详情或看板时一并带走，返回时原样恢复。 */
+function scopeQuery(extra = {}) {
+  return {
+    ...pickGreenSpaceFilters(filters),
+    page: meta.page > 1 ? String(meta.page) : undefined,
+    page_size: meta.page_size !== 10 ? String(meta.page_size) : undefined,
+    ...extra,
+  }
+}
+
 function goDetail(row) {
-  router.push({ name: 'green-space-detail', params: { id: row.id } })
+  router.push({ name: 'green-space-detail', params: { id: row.id }, query: scopeQuery() })
+}
+
+function goDashboard() {
+  router.push({ name: 'dashboard', query: scopeQuery() })
 }
 
 async function onSaved() {
@@ -180,6 +232,18 @@ onMounted(loadDistricts)
 .pager {
   margin-top: 16px;
   justify-content: flex-end;
+}
+
+.filter-bar .area-input {
+  width: 130px;
+}
+
+.filter-bar .area-input :deep(.el-input) {
+  width: 100%;
+}
+
+.area-separator {
+  color: #909399;
 }
 
 .cell-main {

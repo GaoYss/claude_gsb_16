@@ -74,6 +74,35 @@ def test_list_supports_keyword_and_enum_filters(api):
     assert data["meta"]["total"] == 2
 
 
+def test_list_supports_area_range_and_combined_filters(api):
+    api.post("/api/v1/green-spaces", space_payload(name="小公园", area_sqm=500,
+                                                   green_type="park", status="normal"))
+    api.post("/api/v1/green-spaces", space_payload(name="中等公园", area_sqm=5000,
+                                                   green_type="park", status="normal"))
+    api.post("/api/v1/green-spaces", space_payload(name="大公园", area_sqm=50000,
+                                                   green_type="park", status="repairing"))
+    api.post("/api/v1/green-spaces", space_payload(name="小区绿地", area_sqm=3000,
+                                                   district="西湖区", green_type="residential"))
+
+    data = api.data(api.get("/api/v1/green-spaces", area_min=1000, area_max=10000))
+    assert {item["name"] for item in data["items"]} == {"中等公园", "小区绿地"}
+    assert data["summary"]["total"] == 2
+
+    # 面积区间与行政区、类型、状态同时生效（AND 组合）
+    data = api.data(api.get(
+        "/api/v1/green-spaces",
+        district="拱墅区", green_type="park", status="normal",
+        area_min=1000, area_max=10000,
+    ))
+    assert [item["name"] for item in data["items"]] == ["中等公园"]
+
+    # 仅给上限/下限，且非法值被忽略
+    data = api.data(api.get("/api/v1/green-spaces", area_max=1000))
+    assert {item["name"] for item in data["items"]} == {"小公园"}
+    data = api.data(api.get("/api/v1/green-spaces", area_min="abc", area_max="-5"))
+    assert data["meta"]["total"] == 4
+
+
 def test_list_supports_sorting_and_pagination(api):
     api.post("/api/v1/green-spaces", space_payload(name="小绿地", area_sqm=100))
     api.post("/api/v1/green-spaces", space_payload(name="大绿地", area_sqm=9000))

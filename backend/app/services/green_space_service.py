@@ -45,6 +45,10 @@ class GreenSpaceService(BaseService):
             query = query.filter(GreenSpace.status == filters["status"])
         if filters.get("district"):
             query = query.filter(GreenSpace.district == filters["district"])
+        if filters.get("area_min") is not None:
+            query = query.filter(GreenSpace.area_sqm >= filters["area_min"])
+        if filters.get("area_max") is not None:
+            query = query.filter(GreenSpace.area_sqm <= filters["area_max"])
         keyword = filters.get("keyword")
         if keyword:
             like = f"%{keyword}%"
