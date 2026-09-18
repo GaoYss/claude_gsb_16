@@ -78,9 +78,42 @@ def test_ranking_orders_by_record_count(api, make_space, make_record):
 def test_dashboard_returns_all_sections(api, seeded):
     data = api.data(api.get("/api/v1/statistics/dashboard"))
     assert set(data) == {
-        "overview", "distributions", "trends", "ranking",
+        "scope", "overview", "distributions", "trends", "ranking",
         "overdue_tasks", "upcoming_tasks", "recent_activity",
     }
+    assert data["scope"] == {}
     assert len(data["trends"]) == 6
     assert data["recent_activity"]["records"]
     assert data["recent_activity"]["replacements"]
+
+
+def test_dashboard_scopes_to_green_space_filters(api, make_space, make_task, make_record):
+    big_park = make_space(name="大型公园", district="拱墅区", green_type="park",
+                          maintenance_grade="level1", area_sqm=20000)
+    small_residential = make_space(name="小型小区绿地", district="西湖区", green_type="residential",
+                                   maintenance_grade="level3", area_sqm=800)
+    make_record(space=big_park)
+    make_record(space=small_residential)
+    make_task(space=big_park)
+    make_task(space=small_residential)
+
+    data = api.data(api.get(
+        "/api/v1/statistics/dashboard",
+        district="拱墅区", green_type="park", maintenance_grade="level1",
+        area_min=10000, area_max=50000,
+    ))
+    assert data["scope"] == {
+        "district": "拱墅区", "green_type": "park", "maintenance_grade": "level1",
+        "area_min": 10000.0, "area_max": 50000.0,
+    }
+    assert data["overview"]["green_space"]["total"] == 1
+    assert data["overview"]["record"]["total"] == 1
+    assert data["overview"]["task"]["total"] == 1
+    assert {item["value"] for item in data["distributions"]["green_space_by_type"]} == {"park"}
+    assert len(data["ranking"]) == 1
+    assert data["ranking"][0]["name"] == "大型公园"
+
+    # 关键字不进入看板范围，等价于不按名称收窄
+    data = api.data(api.get("/api/v1/statistics/dashboard", keyword="不存在的名称"))
+    assert data["scope"] == {}
+    assert data["overview"]["green_space"]["total"] == 2

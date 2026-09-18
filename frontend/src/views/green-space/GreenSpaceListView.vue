@@ -2,6 +2,7 @@
   <div class="page">
     <PageHeader title="绿地台账" description="城市绿地基础档案，养护任务与记录均以此台账为归属">
       <template #actions>
+        <el-button :icon="'DataLine'" @click="goDashboard">养护看板</el-button>
         <el-button type="primary" :icon="'Plus'" @click="formDialog.open()">新增绿地</el-button>
       </template>
     </PageHeader>
@@ -28,6 +29,24 @@
         <el-select v-model="filters.status" placeholder="养护状态" clearable @change="search">
           <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
+        <div class="area-range">
+          <span class="area-range__label">面积(㎡)</span>
+          <el-input-number
+            v-model="filters.area_min"
+            :min="0"
+            :controls="false"
+            placeholder="最小面积"
+            @change="search"
+          />
+          <span class="area-range__sep">~</span>
+          <el-input-number
+            v-model="filters.area_max"
+            :min="0"
+            :controls="false"
+            placeholder="最大面积"
+            @change="search"
+          />
+        </div>
         <el-button type="primary" :icon="'Search'" @click="search">查询</el-button>
         <el-button :icon="'RefreshLeft'" @click="resetFilters">重置</el-button>
       </div>
@@ -128,9 +147,19 @@ const { options: typeOptions } = useEnumOptions('green_space_type')
 const { options: gradeOptions } = useEnumOptions('maintenance_grade')
 const { options: statusOptions } = useEnumOptions('green_space_status')
 
-const { filters, meta, items, summary, loading, load, search, resetFilters, handlePageChange, handleSizeChange } =
+const { route, filters, meta, items, summary, loading, load, search, resetFilters, handlePageChange, handleSizeChange } =
   useListQuery(greenSpaceApi.list, {
-    initialFilters: { keyword: '', district: '', green_type: '', maintenance_grade: '', status: '' },
+    routeSync: true,
+    numericFilters: ['area_min', 'area_max'],
+    initialFilters: {
+      keyword: '',
+      district: '',
+      green_type: '',
+      maintenance_grade: '',
+      status: '',
+      area_min: null,
+      area_max: null,
+    },
   })
 
 async function loadDistricts() {
@@ -138,8 +167,21 @@ async function loadDistricts() {
   districts.value = data?.items || []
 }
 
+/** 跳转时保留当前筛选条件与翻页位置，档案页返回后可原样恢复。 */
+function listQuery() {
+  return { ...route.query }
+}
+
 function goDetail(row) {
-  router.push({ name: 'green-space-detail', params: { id: row.id } })
+  router.push({
+    name: 'green-space-detail',
+    params: { id: row.id },
+    query: listQuery(),
+  })
+}
+
+function goDashboard() {
+  router.push({ name: 'dashboard', query: listQuery() })
 }
 
 async function onSaved() {
@@ -177,6 +219,34 @@ onMounted(loadDistricts)
 </script>
 
 <style scoped>
+.area-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.area-range .el-input-number {
+  width: 120px;
+}
+
+.area-range .el-input-number :deep(.el-input) {
+  width: 100%;
+}
+
+.area-range .el-input-number :deep(.el-input__inner) {
+  text-align: left;
+}
+
+.area-range__label {
+  color: #606266;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.area-range__sep {
+  color: #909399;
+}
+
 .pager {
   margin-top: 16px;
   justify-content: flex-end;

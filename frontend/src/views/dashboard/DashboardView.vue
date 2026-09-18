@@ -1,10 +1,19 @@
 <template>
   <div class="page" v-loading="loading">
-    <PageHeader title="养护总览" description="绿地台账、养护任务、养护记录与绿植更换的整体运行情况">
+    <PageHeader title="养护总览" :description="scopeDescription">
       <template #actions>
         <el-button :icon="'Refresh'" @click="load">刷新数据</el-button>
       </template>
     </PageHeader>
+
+    <div v-if="scopeChips.length" class="panel scope-bar">
+      <span class="scope-bar__title">台账筛选范围</span>
+      <el-tag v-for="chip in scopeChips" :key="chip.key" class="scope-bar__tag" type="info" effect="plain">
+        {{ chip.label }}
+      </el-tag>
+      <el-button link type="primary" :icon="'Back'" @click="backToList">返回台账列表</el-button>
+      <el-button link type="info" :icon="'Close'" @click="clearScope">清除条件</el-button>
+    </div>
 
     <div class="stat-grid">
       <StatCard
@@ -154,21 +163,39 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import { statisticsApi } from '@/api'
 import ChartPanel from '@/components/common/ChartPanel.vue'
 import EnumTag from '@/components/common/EnumTag.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatCard from '@/components/common/StatCard.vue'
+import { useGreenSpaceScope } from '@/composables/useGreenSpaceScope'
 import { formatArea, formatCurrency, formatHours, formatNumber, formatPercent, today } from '@/utils/format'
 
 import { barOption, pieOption, trendOption } from './chartOptions'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const dashboard = ref(emptyDashboard())
+
+const { scopeParams, hasScope, chips: allScopeChips, listQuery } = useGreenSpaceScope()
+
+// 关键字只作用于台账列表，不进入看板聚合口径，因此条件条不展示
+const scopeChips = computed(() => allScopeChips.value.filter((chip) => chip.key !== 'keyword'))
+const scopeDescription = computed(() =>
+  hasScope.value ? '按台账检索条件收窄后的绿地养护运行情况' : '绿地台账、养护任务、养护记录与绿植更换的整体运行情况',
+)
+
+function backToList() {
+  router.push({ name: 'green-space-list', query: listQuery() })
+}
+
+async function clearScope() {
+  await router.replace({ name: 'dashboard' })
+}
 
 function emptyDashboard() {
   return {
@@ -235,16 +262,36 @@ function overdueDays(planDate) {
 async function load() {
   loading.value = true
   try {
-    dashboard.value = await statisticsApi.dashboard({ months: 6 })
+    dashboard.value = await statisticsApi.dashboard({ months: 6, ...scopeParams.value })
   } finally {
     loading.value = false
   }
 }
 
+// 浏览器前进/后退或条件被清除时按新范围重新取数
+watch(
+  () => route.query,
+  () => {
+    if (!loading.value) load()
+  },
+)
+
 onMounted(load)
 </script>
 
 <style scoped>
+.scope-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.scope-bar__title {
+  color: #606266;
+  font-size: 13px;
+}
+
 .dashboard-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));

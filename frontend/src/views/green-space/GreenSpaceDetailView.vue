@@ -5,10 +5,19 @@
         <EnumTag v-if="space.status" group="green_space_status" :value="space.status" :label="space.status_label" />
       </template>
       <template #actions>
-        <el-button :icon="'Back'" @click="router.push('/green-spaces')">返回台账</el-button>
+        <el-button :icon="'Back'" @click="backToList">返回台账</el-button>
+        <el-button :icon="'DataLine'" @click="goDashboard">养护看板</el-button>
         <el-button type="primary" :icon="'Edit'" @click="formDialog.open(space)">编辑台账</el-button>
       </template>
     </PageHeader>
+
+    <div v-if="scopeChips.length" class="panel scope-bar">
+      <span class="scope-bar__title">来自台账的检索条件</span>
+      <el-tag v-for="chip in scopeChips" :key="chip.key" class="scope-bar__tag" type="info" effect="plain">
+        {{ chip.label }}
+      </el-tag>
+      <el-button link type="primary" :icon="'Close'" @click="clearScope">清除条件</el-button>
+    </div>
 
     <div class="panel">
       <el-descriptions :column="3" border>
@@ -142,6 +151,7 @@ import { greenSpaceApi } from '@/api'
 import EnumTag from '@/components/common/EnumTag.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatCard from '@/components/common/StatCard.vue'
+import { useGreenSpaceScope } from '@/composables/useGreenSpaceScope'
 import { formatArea, formatCurrency, formatDate, formatHours, formatNumber } from '@/utils/format'
 
 import GreenSpaceFormDialog from './GreenSpaceFormDialog.vue'
@@ -151,6 +161,23 @@ const router = useRouter()
 const formDialog = ref(null)
 const loading = ref(false)
 const activeTab = ref('tasks')
+
+const { chips: scopeChips, listQuery } = useGreenSpaceScope()
+
+/** 返回台账列表时保留检索条件与翻页位置。 */
+function backToList() {
+  router.push({ name: 'green-space-list', query: listQuery() })
+}
+
+/** 跳转到看板时继续带上台账筛选条件。 */
+function goDashboard() {
+  router.push({ name: 'dashboard', query: { ...route.query } })
+}
+
+/** 清除带入的条件，仅影响当前档案页 URL，不改变档案内容。 */
+function clearScope() {
+  router.replace({ name: 'green-space-detail', params: { id: route.params.id } })
+}
 
 const space = ref({})
 const statistics = ref({ task_status: {}, record_count: 0, total_work_hours: 0, replacement_count: 0, replacement_quantity: 0, replacement_amount: 0 })
@@ -192,6 +219,18 @@ onMounted(load)
 </script>
 
 <style scoped>
+.scope-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.scope-bar__title {
+  color: #606266;
+  font-size: 13px;
+}
+
 .tab-actions {
   display: flex;
   justify-content: flex-end;

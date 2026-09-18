@@ -12,6 +12,11 @@ from ..utils.dates import today
 from ..utils.numbers import to_float
 
 
+from ..utils.dates import today
+from ..utils.numbers import to_float
+from .green_space_service import GreenSpaceService
+
+
 class StatisticsService:
     """看板与各类分布统计。"""
 
@@ -25,18 +30,31 @@ class StatisticsService:
             cursor = (cursor - timedelta(days=1)).replace(day=1)
         return list(reversed(starts))
 
+    @staticmethod
+    def normalize_scope(filters):
+        """看板只接收台账范围条件（行政区/类型/等级/状态/面积区间），剔除关键字。"""
+
+        return GreenSpaceService.scope_filters(filters or {})
+
     # ------------------------------------------------------------ 总览
     @staticmethod
-    def overview():
+    def overview(space_filters=None):
+        space_filters = StatisticsService.normalize_scope(space_filters)
         current = today()
         month_start = current.replace(day=1)
         year_start = current.replace(month=1, day=1)
 
-        space_total, space_area = db.session.query(
-            func.count(GreenSpace.id), func.coalesce(func.sum(GreenSpace.area_sqm), 0)
+        space_total, space_area = GreenSpaceService._apply_filters(
+            db.session.query(
+                func.count(GreenSpace.id), func.coalesce(func.sum(GreenSpace.area_sqm), 0)
+            ),
+            space_filters,
         ).one()
         space_rows = (
-            db.session.query(GreenSpace.status, func.count(GreenSpace.id))
+            GreenSpaceService._apply_filters(
+                db.session.query(GreenSpace.status, func.count(GreenSpace.id)),
+                space_filters,
+            )
             .group_by(GreenSpace.status)
             .all()
         )
@@ -45,7 +63,11 @@ class StatisticsService:
             space_status[status] = count
 
         task_rows = (
-            db.session.query(MaintenanceTask.status, func.count(MaintenanceTask.id))
+            GreenSpaceService.apply_scope(
+                db.session.query(MaintenanceTask.status, func.count(MaintenanceTask.id)),
+                MaintenanceTask.green_space_id,
+                space_filters,
+            )
             .group_by(MaintenanceTask.status)
             .all()
         )
@@ -55,13 +77,21 @@ class StatisticsService:
         task_total = sum(task_status.values())
 
         overdue = (
-            db.session.query(func.count(MaintenanceTask.id))
+            GreenSpaceService.apply_scope(
+                db.session.query(func.count(MaintenanceTask.id)),
+                MaintenanceTask.green_space_id,
+                space_filters,
+            )
             .filter(MaintenanceTask.status.in_(OPEN_STATUSES), MaintenanceTask.plan_date < current)
             .scalar()
             or 0
         )
         due_soon = (
-            db.session.query(func.count(MaintenanceTask.id))
+            GreenSpaceService.apply_scope(
+                db.session.query(func.count(MaintenanceTask.id)),
+                MaintenanceTask.green_space_id,
+                space_filters,
+            )
             .filter(
                 MaintenanceTask.status.in_(OPEN_STATUSES),
                 MaintenanceTask.plan_date >= current,
@@ -71,29 +101,49 @@ class StatisticsService:
             or 0
         )
 
-        record_total, hours_total = db.session.query(
-            func.count(MaintenanceRecord.id),
-            func.coalesce(func.sum(MaintenanceRecord.work_hours), 0),
+        record_total, hours_total = GreenSpaceService.apply_scope(
+            db.session.query(
+                func.count(MaintenanceRecord.id),
+                func.coalesce(func.sum(MaintenanceRecord.work_hours), 0),
+            ),
+            MaintenanceRecord.green_space_id,
+            space_filters,
         ).one()
-        month_records, month_hours = db.session.query(
-            func.count(MaintenanceRecord.id),
-            func.coalesce(func.sum(MaintenanceRecord.work_hours), 0),
+        month_records, month_hours = GreenSpaceService.apply_scope(
+            db.session.query(
+                func.count(MaintenanceRecord.id),
+                func.coalesce(func.sum(MaintenanceRecord.work_hours), 0),
+            ),
+            MaintenanceRecord.green_space_id,
+            space_filters,
         ).filter(MaintenanceRecord.record_date >= month_start).one()
 
-        replacement_total, quantity_total, amount_total = db.session.query(
-            func.count(PlantReplacement.id),
-            func.coalesce(func.sum(PlantReplacement.quantity), 0),
-            func.coalesce(func.sum(PlantReplacement.amount), 0),
+        replacement_total, quantity_total, amount_total = GreenSpaceService.apply_scope(
+            db.session.query(
+                func.count(PlantReplacement.id),
+                func.coalesce(func.sum(PlantReplacement.quantity), 0),
+                func.coalesce(func.sum(PlantReplacement.amount), 0),
+            ),
+            PlantReplacement.green_space_id,
+            space_filters,
         ).one()
-        month_count, month_quantity, month_amount = db.session.query(
-            func.count(PlantReplacement.id),
-            func.coalesce(func.sum(PlantReplacement.quantity), 0),
-            func.coalesce(func.sum(PlantReplacement.amount), 0),
+        month_count, month_quantity, month_amount = GreenSpaceService.apply_scope(
+            db.session.query(
+                func.count(PlantReplacement.id),
+                func.coalesce(func.sum(PlantReplacement.quantity), 0),
+                func.coalesce(func.sum(PlantReplacement.amount), 0),
+            ),
+            PlantReplacement.green_space_id,
+            space_filters,
         ).filter(PlantReplacement.replace_date >= month_start).one()
-        _, year_quantity, year_amount = db.session.query(
-            func.count(PlantReplacement.id),
-            func.coalesce(func.sum(PlantReplacement.quantity), 0),
-            func.coalesce(func.sum(PlantReplacement.amount), 0),
+        _, year_quantity, year_amount = GreenSpaceService.apply_scope(
+            db.session.query(
+                func.count(PlantReplacement.id),
+                func.coalesce(func.sum(PlantReplacement.quantity), 0),
+                func.coalesce(func.sum(PlantReplacement.amount), 0),
+            ),
+            PlantReplacement.green_space_id,
+            space_filters,
         ).filter(PlantReplacement.replace_date >= year_start).one()
 
         completed = task_status.get("completed", 0)
@@ -132,9 +182,16 @@ class StatisticsService:
 
     # ------------------------------------------------------------ 分布
     @staticmethod
-    def distributions():
+    def distributions(space_filters=None):
+        space_filters = StatisticsService.normalize_scope(space_filters)
+
+        def space_query(*columns):
+            return GreenSpaceService._apply_filters(
+                db.session.query(*columns), space_filters
+            )
+
         type_rows = (
-            db.session.query(
+            space_query(
                 GreenSpace.green_type,
                 func.count(GreenSpace.id),
                 func.coalesce(func.sum(GreenSpace.area_sqm), 0),
@@ -143,7 +200,7 @@ class StatisticsService:
             .all()
         )
         grade_rows = (
-            db.session.query(
+            space_query(
                 GreenSpace.maintenance_grade,
                 func.count(GreenSpace.id),
                 func.coalesce(func.sum(GreenSpace.area_sqm), 0),
@@ -152,7 +209,7 @@ class StatisticsService:
             .all()
         )
         district_rows = (
-            db.session.query(
+            space_query(
                 GreenSpace.district,
                 func.count(GreenSpace.id),
                 func.coalesce(func.sum(GreenSpace.area_sqm), 0),
@@ -163,30 +220,46 @@ class StatisticsService:
             .all()
         )
         task_type_rows = (
-            db.session.query(MaintenanceTask.task_type, func.count(MaintenanceTask.id))
+            GreenSpaceService.apply_scope(
+                db.session.query(MaintenanceTask.task_type, func.count(MaintenanceTask.id)),
+                MaintenanceTask.green_space_id,
+                space_filters,
+            )
             .group_by(MaintenanceTask.task_type)
             .all()
         )
         priority_rows = (
-            db.session.query(MaintenanceTask.priority, func.count(MaintenanceTask.id))
+            GreenSpaceService.apply_scope(
+                db.session.query(MaintenanceTask.priority, func.count(MaintenanceTask.id)),
+                MaintenanceTask.green_space_id,
+                space_filters,
+            )
             .group_by(MaintenanceTask.priority)
             .all()
         )
         category_rows = (
-            db.session.query(
-                PlantReplacement.plant_category,
-                func.count(PlantReplacement.id),
-                func.coalesce(func.sum(PlantReplacement.quantity), 0),
-                func.coalesce(func.sum(PlantReplacement.amount), 0),
+            GreenSpaceService.apply_scope(
+                db.session.query(
+                    PlantReplacement.plant_category,
+                    func.count(PlantReplacement.id),
+                    func.coalesce(func.sum(PlantReplacement.quantity), 0),
+                    func.coalesce(func.sum(PlantReplacement.amount), 0),
+                ),
+                PlantReplacement.green_space_id,
+                space_filters,
             )
             .group_by(PlantReplacement.plant_category)
             .all()
         )
         reason_rows = (
-            db.session.query(
-                PlantReplacement.reason,
-                func.count(PlantReplacement.id),
-                func.coalesce(func.sum(PlantReplacement.quantity), 0),
+            GreenSpaceService.apply_scope(
+                db.session.query(
+                    PlantReplacement.reason,
+                    func.count(PlantReplacement.id),
+                    func.coalesce(func.sum(PlantReplacement.quantity), 0),
+                ),
+                PlantReplacement.green_space_id,
+                space_filters,
             )
             .group_by(PlantReplacement.reason)
             .all()
@@ -246,9 +319,10 @@ class StatisticsService:
 
     # ------------------------------------------------------------ 趋势
     @staticmethod
-    def trends(months=6):
+    def trends(months=6, space_filters=None):
         """近 N 个月的养护记录与绿植更换趋势（按自然月聚合）。"""
 
+        space_filters = StatisticsService.normalize_scope(space_filters)
         starts = StatisticsService._month_starts(months)
         buckets = {}
         for start in starts:
@@ -262,11 +336,11 @@ class StatisticsService:
             }
 
         start = starts[0]
-        record_rows = (
-            db.session.query(MaintenanceRecord.record_date, MaintenanceRecord.work_hours)
-            .filter(MaintenanceRecord.record_date >= start)
-            .all()
-        )
+        record_rows = GreenSpaceService.apply_scope(
+            db.session.query(MaintenanceRecord.record_date, MaintenanceRecord.work_hours),
+            MaintenanceRecord.green_space_id,
+            space_filters,
+        ).filter(MaintenanceRecord.record_date >= start).all()
         for record_date, work_hours in record_rows:
             bucket = buckets.get(f"{record_date:%Y-%m}")
             if bucket is None:
@@ -274,15 +348,15 @@ class StatisticsService:
             bucket["record_count"] += 1
             bucket["work_hours"] = round(bucket["work_hours"] + float(work_hours or 0), 2)
 
-        replacement_rows = (
+        replacement_rows = GreenSpaceService.apply_scope(
             db.session.query(
                 PlantReplacement.replace_date,
                 PlantReplacement.quantity,
                 PlantReplacement.amount,
-            )
-            .filter(PlantReplacement.replace_date >= start)
-            .all()
-        )
+            ),
+            PlantReplacement.green_space_id,
+            space_filters,
+        ).filter(PlantReplacement.replace_date >= start).all()
         for replace_date, quantity, amount in replacement_rows:
             bucket = buckets.get(f"{replace_date:%Y-%m}")
             if bucket is None:
@@ -299,31 +373,35 @@ class StatisticsService:
 
     # ------------------------------------------------------------ 榜单与提醒
     @staticmethod
-    def green_space_ranking(limit=5):
+    def green_space_ranking(limit=5, space_filters=None):
+        space_filters = StatisticsService.normalize_scope(space_filters)
         replacement_quantity = (
             db.select(func.coalesce(func.sum(PlantReplacement.quantity), 0))
             .where(PlantReplacement.green_space_id == GreenSpace.id)
             .correlate(GreenSpace)
             .scalar_subquery()
         )
-        rows = (
-            db.session.query(
-                GreenSpace.id,
-                GreenSpace.code,
-                GreenSpace.name,
-                GreenSpace.district,
-                GreenSpace.area_sqm,
-                func.count(MaintenanceRecord.id),
-                func.coalesce(func.sum(MaintenanceRecord.work_hours), 0),
-                replacement_quantity,
+        query = (
+            GreenSpaceService._apply_filters(
+                db.session.query(
+                    GreenSpace.id,
+                    GreenSpace.code,
+                    GreenSpace.name,
+                    GreenSpace.district,
+                    GreenSpace.area_sqm,
+                    func.count(MaintenanceRecord.id),
+                    func.coalesce(func.sum(MaintenanceRecord.work_hours), 0),
+                    replacement_quantity,
+                ),
+                space_filters,
             )
             .join(MaintenanceRecord, MaintenanceRecord.green_space_id == GreenSpace.id)
             .group_by(GreenSpace.id, GreenSpace.code, GreenSpace.name, GreenSpace.district,
                       GreenSpace.area_sqm)
             .order_by(func.count(MaintenanceRecord.id).desc())
             .limit(limit)
-            .all()
         )
+        rows = query.all()
         return [
             {
                 "green_space_id": space_id,
@@ -339,9 +417,14 @@ class StatisticsService:
         ]
 
     @staticmethod
-    def overdue_tasks(limit=10):
+    def overdue_tasks(limit=10, space_filters=None):
+        space_filters = StatisticsService.normalize_scope(space_filters)
         tasks = (
-            db.session.query(MaintenanceTask)
+            GreenSpaceService.apply_scope(
+                db.session.query(MaintenanceTask),
+                MaintenanceTask.green_space_id,
+                space_filters,
+            )
             .filter(
                 MaintenanceTask.status.in_(OPEN_STATUSES),
                 MaintenanceTask.plan_date < today(),
@@ -353,9 +436,14 @@ class StatisticsService:
         return [task.to_dict() for task in tasks]
 
     @staticmethod
-    def upcoming_tasks(limit=10):
+    def upcoming_tasks(limit=10, space_filters=None):
+        space_filters = StatisticsService.normalize_scope(space_filters)
         tasks = (
-            db.session.query(MaintenanceTask)
+            GreenSpaceService.apply_scope(
+                db.session.query(MaintenanceTask),
+                MaintenanceTask.green_space_id,
+                space_filters,
+            )
             .filter(
                 MaintenanceTask.status.in_(OPEN_STATUSES),
                 MaintenanceTask.plan_date >= today(),
@@ -367,15 +455,24 @@ class StatisticsService:
         return [task.to_dict() for task in tasks]
 
     @staticmethod
-    def recent_activity(limit=6):
+    def recent_activity(limit=6, space_filters=None):
+        space_filters = StatisticsService.normalize_scope(space_filters)
         records = (
-            db.session.query(MaintenanceRecord)
+            GreenSpaceService.apply_scope(
+                db.session.query(MaintenanceRecord),
+                MaintenanceRecord.green_space_id,
+                space_filters,
+            )
             .order_by(MaintenanceRecord.record_date.desc(), MaintenanceRecord.id.desc())
             .limit(limit)
             .all()
         )
         replacements = (
-            db.session.query(PlantReplacement)
+            GreenSpaceService.apply_scope(
+                db.session.query(PlantReplacement),
+                PlantReplacement.green_space_id,
+                space_filters,
+            )
             .order_by(PlantReplacement.replace_date.desc(), PlantReplacement.id.desc())
             .limit(limit)
             .all()
@@ -387,15 +484,17 @@ class StatisticsService:
 
     # ------------------------------------------------------------ 汇总入口
     @staticmethod
-    def dashboard(months=6):
-        """看板一次性取数，减少前端并发请求。"""
+    def dashboard(months=6, space_filters=None):
+        """看板一次性取数，减少前端并发请求；可按台账筛选条件收窄统计范围。"""
 
+        space_filters = StatisticsService.normalize_scope(space_filters)
         return {
-            "overview": StatisticsService.overview(),
-            "distributions": StatisticsService.distributions(),
-            "trends": StatisticsService.trends(months),
-            "ranking": StatisticsService.green_space_ranking(),
-            "overdue_tasks": StatisticsService.overdue_tasks(),
-            "upcoming_tasks": StatisticsService.upcoming_tasks(),
-            "recent_activity": StatisticsService.recent_activity(),
+            "scope": space_filters,
+            "overview": StatisticsService.overview(space_filters),
+            "distributions": StatisticsService.distributions(space_filters),
+            "trends": StatisticsService.trends(months, space_filters),
+            "ranking": StatisticsService.green_space_ranking(space_filters=space_filters),
+            "overdue_tasks": StatisticsService.overdue_tasks(space_filters=space_filters),
+            "upcoming_tasks": StatisticsService.upcoming_tasks(space_filters=space_filters),
+            "recent_activity": StatisticsService.recent_activity(space_filters=space_filters),
         }

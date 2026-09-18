@@ -74,6 +74,40 @@ def test_list_supports_keyword_and_enum_filters(api):
     assert data["meta"]["total"] == 2
 
 
+def test_list_supports_combined_filters_with_area_range(api):
+    api.post("/api/v1/green-spaces", space_payload(name="拱墅大公园", district="拱墅区",
+                                                   green_type="park", maintenance_grade="level1",
+                                                   status="normal", area_sqm=30000))
+    api.post("/api/v1/green-spaces", space_payload(name="拱墅小绿地", district="拱墅区",
+                                                   green_type="residential", maintenance_grade="level3",
+                                                   status="repairing", area_sqm=500))
+    api.post("/api/v1/green-spaces", space_payload(name="西湖大公园", district="西湖区",
+                                                   green_type="park", maintenance_grade="level1",
+                                                   area_sqm=20000))
+
+    # 多条件同时生效：行政区 + 类型 + 等级 + 状态 + 面积区间
+    data = api.data(api.get(
+        "/api/v1/green-spaces",
+        district="拱墅区", green_type="park", maintenance_grade="level1",
+        status="normal", area_min=10000, area_max=50000,
+    ))
+    assert [item["name"] for item in data["items"]] == ["拱墅大公园"]
+    assert data["summary"]["total"] == 1
+    assert data["summary"]["total_area"] == 30000.0
+
+    # 只有区间下限
+    data = api.data(api.get("/api/v1/green-spaces", area_min=10000))
+    assert {item["name"] for item in data["items"]} == {"拱墅大公园", "西湖大公园"}
+
+    # 端点写反时自动交换
+    data = api.data(api.get("/api/v1/green-spaces", area_min=50000, area_max=10000))
+    assert {item["name"] for item in data["items"]} == {"拱墅大公园", "西湖大公园"}
+
+    # 非法面积值被忽略，等价于不过滤
+    data = api.data(api.get("/api/v1/green-spaces", area_min="abc"))
+    assert data["meta"]["total"] == 3
+
+
 def test_list_supports_sorting_and_pagination(api):
     api.post("/api/v1/green-spaces", space_payload(name="小绿地", area_sqm=100))
     api.post("/api/v1/green-spaces", space_payload(name="大绿地", area_sqm=9000))

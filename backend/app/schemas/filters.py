@@ -34,11 +34,24 @@ def _date(args, key):
         return None
 
 
+def _number(args, key):
+    value = (args.get(key) or "").strip()
+    if not value:
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    return number if number >= 0 else None
+
+
 def _flag(args, key):
     return str(args.get(key, "")).strip().lower() in {"1", "true", "yes", "y"}
 
 
 def green_space_filters(args):
+    """绿地组合查询：行政区、类型、养护等级、状态与面积区间可同时生效。"""
+
     filters = {}
     for key, group_key in (("green_type", "green_space_type"),
                            ("maintenance_grade", "maintenance_grade"),
@@ -52,6 +65,15 @@ def green_space_filters(args):
     keyword = _text(args, "keyword")
     if keyword:
         filters["keyword"] = keyword
+    area_min = _number(args, "area_min")
+    area_max = _number(args, "area_max")
+    # 端点写反时自动交换，保证区间语义而非直接查空
+    if area_min is not None and area_max is not None and area_min > area_max:
+        area_min, area_max = area_max, area_min
+    if area_min is not None:
+        filters["area_min"] = area_min
+    if area_max is not None:
+        filters["area_max"] = area_max
     return filters
 
 

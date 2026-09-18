@@ -45,6 +45,10 @@ class GreenSpaceService(BaseService):
             query = query.filter(GreenSpace.status == filters["status"])
         if filters.get("district"):
             query = query.filter(GreenSpace.district == filters["district"])
+        if filters.get("area_min") is not None:
+            query = query.filter(GreenSpace.area_sqm >= filters["area_min"])
+        if filters.get("area_max") is not None:
+            query = query.filter(GreenSpace.area_sqm <= filters["area_max"])
         keyword = filters.get("keyword")
         if keyword:
             like = f"%{keyword}%"
@@ -57,6 +61,34 @@ class GreenSpaceService(BaseService):
                     GreenSpace.manager.like(like),
                 )
             )
+        return query
+
+    @staticmethod
+    def has_scope(filters):
+        """是否存在需要跟随到档案/看板的台账筛选条件（关键字不进入看板聚合）。"""
+
+        return any(
+            filters.get(key)
+            for key in ("district", "green_type", "maintenance_grade", "status", "area_min", "area_max")
+        )
+
+    @classmethod
+    def scope_filters(cls, filters):
+        """看板可用的台账范围条件：剔除关键字，避免名称模糊命中污染聚合口径。"""
+
+        return {
+            key: filters[key]
+            for key in ("district", "green_type", "maintenance_grade", "status", "area_min", "area_max")
+            if filters.get(key) is not None
+        }
+
+    @classmethod
+    def apply_scope(cls, query, column, filters):
+        """把非台账查询（任务/记录/更换）限制在筛选命中的绿地范围内。"""
+
+        if cls.has_scope(filters):
+            scope = cls._apply_filters(db.select(GreenSpace.id), filters)
+            query = query.filter(column.in_(scope))
         return query
 
     @classmethod
